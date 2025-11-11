@@ -1,0 +1,50 @@
+from typing import Set
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+import json
+import os
+
+app = FastAPI(title="Mini Chat")
+
+# 연결된 클라이언트 관리
+active_connections: Set[WebSocket] = set()
+
+async def broadcast(message: dict):
+    data = json.dumps(message, ensure_ascii=False)
+    # 끊어진 소켓은 제거
+    dead = []
+    for ws in active_connections:
+        try:
+            await ws.send_text(data)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        active_connections.discard(ws)
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    # 쿼리로 닉네임 받기 (기본값 '익명')
+    name = ws.query_params.get("name", "익명")
+    await ws.accept()
+    active_connections.add(ws)
+    await broadcast({"type": "system", "text": f"🟢 {name} 님이 입장했습니다.", "sender": "system"})
+
+    try:
+        while True:
+            text = await ws.receive_text()
+            await broadcast({"type": "chat", "text": text, "sender": name})
+    except WebSocketDisconnect:
+        active_connections.discard(ws)
+        await broadcast({"type": "system", "text": f"🔴 {name} 님이 퇴장했습니다.", "sender": "system"})
+    except Exception:
+        active_connections.discard(ws)
+        await broadcast({"type": "system", "text": f"⚠️ {name} 연결 오류로 종료", "sender": "system"})
+
+# 정적 파일 제공 (프런트)
+dist_dir = os.path.join("frontend", "dist")
+static_dir = "static"
+if os.path.isdir(dist_dir):
+    app.mount("/", StaticFiles(directory=dist_dir, html=True), name="static")
+else:
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
