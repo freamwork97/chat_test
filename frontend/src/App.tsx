@@ -4,6 +4,7 @@ type Msg =
   | { type: 'system'; text: string; sender: 'system'; timestamp: string }
   | { type: 'chat'; text: string; sender: string; timestamp: string }
   | { type: 'users'; users: string[] }
+  | { type: 'error'; text: string; reason?: string }
 
 // 타임스탬프를 간단한 형식으로 변환 (HH:MM:SS)
 function formatTime(timestamp: string): string {
@@ -48,10 +49,21 @@ export default function App() {
     ws.onerror = () => setStatus('오류')
     ws.onmessage = (ev) => {
       try {
-        const msg = JSON.parse(ev.data) as Msg
-        if (msg.type === 'users') {
-          setUsers(msg.users)
+        const raw = JSON.parse(ev.data)
+        if (raw.type === 'users') {
+          setUsers(raw.users)
+        } else if (raw.type === 'error') {
+          // 서버에서 닉네임 중복 등 에러를 받은 경우
+          setStatus('오류')
+          // 시스템 메시지로 사용자에게 표시
+          setMessages((prev) => [...prev, { type: 'system', text: raw.text, sender: 'system', timestamp: new Date().toISOString() }])
+          // 연결 종료
+          try {
+            ws.close()
+          } catch {}
+          wsRef.current = null
         } else {
+          const msg = raw as Msg
           setMessages((prev) => [...prev, msg])
         }
       } catch {

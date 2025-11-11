@@ -36,10 +36,22 @@ async def broadcast(message: dict):
 async def websocket_endpoint(ws: WebSocket):
     # 쿼리로 닉네임 받기 (기본값 '익명')
     name = ws.query_params.get("name", "익명")
+    # 먼저 accept한 뒤 닉네임 중복 검사
     await ws.accept()
+
+    # 중복 닉네임이면 해당 소켓에 에러 메시지 전송 후 연결 종료
+    if name in connected_users:
+        try:
+            await ws.send_text(json.dumps({"type": "error", "text": "중복된 닉네임입니다.", "reason": "duplicate"}, ensure_ascii=False))
+        except Exception:
+            pass
+        await ws.close()
+        return
+
+    # 중복이 아니면 연결/사용자 목록에 추가
     active_connections.add(ws)
     connected_users.add(name)
-    
+
     # 사용자 목록 업데이트 브로드캐스트
     await broadcast({"type": "users", "users": list(connected_users)})
     # 입장 알림
