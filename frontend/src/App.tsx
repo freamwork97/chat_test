@@ -62,6 +62,11 @@ export default function App() {
             ws.close()
           } catch {}
           wsRef.current = null
+        } else if (raw.type === 'assign') {
+          // 서버에서 할당된 닉네임을 수신한 경우
+          const newName = raw.name
+          setName(newName)
+          setMessages((prev) => [...prev, { type: 'system', text: `닉네임이 '${newName}'(으)로 지정되었습니다.`, sender: 'system', timestamp: new Date().toISOString() }])
         } else {
           const msg = raw as Msg
           setMessages((prev) => [...prev, msg])

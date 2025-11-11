@@ -39,42 +39,46 @@ async def websocket_endpoint(ws: WebSocket):
     # 먼저 accept한 뒤 닉네임 중복 검사
     await ws.accept()
 
-    # 중복 닉네임이면 해당 소켓에 에러 메시지 전송 후 연결 종료
-    if name in connected_users:
+    # 닉네임 중복 시 자동으로 유니크한 suffix를 붙여 할당
+    assigned_name = name
+    if assigned_name in connected_users:
+        idx = 1
+        while f"{name}_{idx}" in connected_users:
+            idx += 1
+        assigned_name = f"{name}_{idx}"
+        # 클라이언트에게 할당된 닉네임을 알림
         try:
-            await ws.send_text(json.dumps({"type": "error", "text": "중복된 닉네임입니다.", "reason": "duplicate"}, ensure_ascii=False))
+            await ws.send_text(json.dumps({"type": "assign", "name": assigned_name}, ensure_ascii=False))
         except Exception:
             pass
-        await ws.close()
-        return
 
-    # 중복이 아니면 연결/사용자 목록에 추가
+    # 연결/사용자 목록에 추가
     active_connections.add(ws)
-    connected_users.add(name)
+    connected_users.add(assigned_name)
 
     # 사용자 목록 업데이트 브로드캐스트
     await broadcast({"type": "users", "users": list(connected_users)})
-    # 입장 알림
-    await broadcast({"type": "system", "text": f"🟢 {name} 님이 입장했습니다.", "sender": "system"})
+    # 입장 알림 (할당된 닉네임 사용)
+    await broadcast({"type": "system", "text": f"🟢 {assigned_name} 님이 입장했습니다.", "sender": "system"})
 
     try:
         while True:
             text = await ws.receive_text()
-            await broadcast({"type": "chat", "text": text, "sender": name})
+            await broadcast({"type": "chat", "text": text, "sender": assigned_name})
     except WebSocketDisconnect:
         active_connections.discard(ws)
-        connected_users.discard(name)
+        connected_users.discard(assigned_name)
         # 사용자 목록 업데이트 브로드캐스트
         await broadcast({"type": "users", "users": list(connected_users)})
-        # 퇴장 알림
-        await broadcast({"type": "system", "text": f"🔴 {name} 님이 퇴장했습니다.", "sender": "system"})
+        # 퇴장 알림 (할당된 닉네임 사용)
+        await broadcast({"type": "system", "text": f"🔴 {assigned_name} 님이 퇴장했습니다.", "sender": "system"})
     except Exception:
         active_connections.discard(ws)
-        connected_users.discard(name)
+        connected_users.discard(assigned_name)
         # 사용자 목록 업데이트 브로드캐스트
         await broadcast({"type": "users", "users": list(connected_users)})
-        # 오류 알림
-        await broadcast({"type": "system", "text": f"⚠️ {name} 연결 오류로 종료", "sender": "system"})
+        # 오류 알림 (할당된 닉네임 사용)
+        await broadcast({"type": "system", "text": f"⚠️ {assigned_name} 연결 오류로 종료", "sender": "system"})
 
 # 정적 파일 제공 (프런트)
 dist_dir = os.path.join("frontend", "dist")
