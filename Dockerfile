@@ -16,14 +16,18 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV TZ=Asia/Seoul
+
+# 시간대 설정
+RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
+RUN ln -snf /usr/share/zoneinfo/Asia/Seoul /etc/localtime && echo Asia/Seoul > /etc/timezone
 
 # Install Python deps
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend and static fallback
+# Copy backend
 COPY main.py ./
-COPY static ./static
 
 # Copy built frontend
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist

@@ -4,6 +4,8 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import json
 import os
+from datetime import datetime, timezone
+import pytz
 
 app = FastAPI(title="Mini Chat")
 
@@ -11,6 +13,12 @@ app = FastAPI(title="Mini Chat")
 active_connections: Set[WebSocket] = set()
 
 async def broadcast(message: dict):
+    # timestamp 자동 추가 (없으면) - 한국 시간대로 변환
+    if "timestamp" not in message:
+        # UTC 현재 시간을 한국 시간대로 변환
+        kst = pytz.timezone('Asia/Seoul')
+        message["timestamp"] = datetime.now(kst).isoformat()
+    
     data = json.dumps(message, ensure_ascii=False)
     # 끊어진 소켓은 제거
     dead = []
@@ -43,8 +51,7 @@ async def websocket_endpoint(ws: WebSocket):
 
 # 정적 파일 제공 (프런트)
 dist_dir = os.path.join("frontend", "dist")
-static_dir = "static"
 if os.path.isdir(dist_dir):
     app.mount("/", StaticFiles(directory=dist_dir, html=True), name="static")
 else:
-    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+    raise RuntimeError("Frontend dist directory not found. Please run 'npm run build' in the frontend directory.")

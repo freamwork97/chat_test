@@ -1,8 +1,23 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 type Msg =
-  | { type: 'system'; text: string; sender: 'system' }
-  | { type: 'chat'; text: string; sender: string }
+  | { type: 'system'; text: string; sender: 'system'; timestamp: string }
+  | { type: 'chat'; text: string; sender: string; timestamp: string }
+
+// 타임스탬프를 간단한 형식으로 변환 (HH:MM:SS)
+function formatTime(timestamp: string): string {
+  try {
+    const date = new Date(timestamp)
+    return date.toLocaleTimeString('ko-KR', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit',
+      hour12: false
+    })
+  } catch {
+    return timestamp
+  }
+}
 
 export default function App() {
   const [name, setName] = useState('익명')
@@ -83,10 +98,13 @@ export default function App() {
         {messages.map((m, i) => (
           <div key={i} className={m.type === 'system' ? 'sys' : 'msg'}>
             {m.type === 'system' ? (
-              <>{m.text}</>
+              <>
+                <span className="time">{formatTime(m.timestamp)}</span> {m.text}
+              </>
             ) : (
               <>
-                <span className={m.sender === name ? 'me' : 'them'}>[{m.sender}]</span> {m.text}
+                <span className={m.sender === name ? 'me' : 'them'}>[{m.sender}]</span>
+                <span className="time">{formatTime(m.timestamp)}</span> {m.text}
               </>
             )}
           </div>
