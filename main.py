@@ -11,6 +11,8 @@ app = FastAPI(title="Mini Chat")
 
 # 연결된 클라이언트 관리
 active_connections: Set[WebSocket] = set()
+# 연결된 사용자 이름 목록
+connected_users: Set[str] = set()
 
 async def broadcast(message: dict):
     # timestamp 자동 추가 (없으면) - 한국 시간대로 변환
@@ -36,6 +38,11 @@ async def websocket_endpoint(ws: WebSocket):
     name = ws.query_params.get("name", "익명")
     await ws.accept()
     active_connections.add(ws)
+    connected_users.add(name)
+    
+    # 사용자 목록 업데이트 브로드캐스트
+    await broadcast({"type": "users", "users": list(connected_users)})
+    # 입장 알림
     await broadcast({"type": "system", "text": f"🟢 {name} 님이 입장했습니다.", "sender": "system"})
 
     try:
@@ -44,9 +51,17 @@ async def websocket_endpoint(ws: WebSocket):
             await broadcast({"type": "chat", "text": text, "sender": name})
     except WebSocketDisconnect:
         active_connections.discard(ws)
+        connected_users.discard(name)
+        # 사용자 목록 업데이트 브로드캐스트
+        await broadcast({"type": "users", "users": list(connected_users)})
+        # 퇴장 알림
         await broadcast({"type": "system", "text": f"🔴 {name} 님이 퇴장했습니다.", "sender": "system"})
     except Exception:
         active_connections.discard(ws)
+        connected_users.discard(name)
+        # 사용자 목록 업데이트 브로드캐스트
+        await broadcast({"type": "users", "users": list(connected_users)})
+        # 오류 알림
         await broadcast({"type": "system", "text": f"⚠️ {name} 연결 오류로 종료", "sender": "system"})
 
 # 정적 파일 제공 (프런트)

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 type Msg =
   | { type: 'system'; text: string; sender: 'system'; timestamp: string }
   | { type: 'chat'; text: string; sender: string; timestamp: string }
+  | { type: 'users'; users: string[] }
 
 // 타임스탬프를 간단한 형식으로 변환 (HH:MM:SS)
 function formatTime(timestamp: string): string {
@@ -23,6 +24,7 @@ export default function App() {
   const [name, setName] = useState('익명')
   const [status, setStatus] = useState<'연결 중' | '연결됨' | '연결 종료' | '오류'>('연결 중')
   const [messages, setMessages] = useState<Msg[]>([])
+  const [users, setUsers] = useState<string[]>([])
   const [input, setInput] = useState('')
   const wsRef = useRef<WebSocket | null>(null)
 
@@ -47,7 +49,11 @@ export default function App() {
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data) as Msg
-        setMessages((prev) => [...prev, msg])
+        if (msg.type === 'users') {
+          setUsers(msg.users)
+        } else {
+          setMessages((prev) => [...prev, msg])
+        }
       } catch {
         // ignore non-JSON
       }
@@ -94,21 +100,36 @@ export default function App() {
         </div>
       </header>
 
-      <div id="log">
-        {messages.map((m, i) => (
-          <div key={i} className={m.type === 'system' ? 'sys' : 'msg'}>
-            {m.type === 'system' ? (
-              <>
-                <span className="time">{formatTime(m.timestamp)}</span> {m.text}
-              </>
-            ) : (
-              <>
-                <span className={m.sender === name ? 'me' : 'them'}>[{m.sender}]</span>
-                <span className="time">{formatTime(m.timestamp)}</span> {m.text}
-              </>
-            )}
+      <div className="container">
+        <div id="log">
+          {messages.map((m, i) => (
+            <div key={i} className={m.type === 'system' ? 'sys' : 'msg'}>
+              {m.type === 'system' ? (
+                <>
+                  <span className="time">{formatTime(m.timestamp)}</span> {m.text}
+                </>
+              ) : m.type === 'chat' ? (
+                <>
+                  <span className={m.sender === name ? 'me' : 'them'}>[{m.sender}]</span>
+                  <span className="time">{formatTime(m.timestamp)}</span> {m.text}
+                </>
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        <aside className="sidebar">
+          <div className="users-header">
+            <strong>접속자 ({users.length})</strong>
           </div>
-        ))}
+          <div className="users-list">
+            {users.map((user, i) => (
+              <div key={i} className="user-item">
+                <span className="user-dot">●</span> {user}
+              </div>
+            ))}
+          </div>
+        </aside>
       </div>
 
       <form onSubmit={send}>
