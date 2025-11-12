@@ -1,88 +1,213 @@
-from typing import Set
+from typing import Set, Dict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 import pytz
+from collections import defaultdict
+from uuid import uuid4
 
-app = FastAPI(title="Mini Chat")
+# --- DB (SQLite, SQLAlchemy sync) ---
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Index
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-# 연결된 클라이언트 관리
-active_connections: Set[WebSocket] = set()
-# 연결된 사용자 이름 목록
-connected_users: Set[str] = set()
+DB_URL = "sqlite:///./chat.db"
+engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-async def broadcast(message: dict):
-    # timestamp 자동 추가 (없으면) - 한국 시간대로 변환
+class Message(Base):
+    __tablename__ = "messages"
+    id = Column(Integer, primary_key=True, index=True)
+    room = Column(String(128), index=True)
+    msg_type = Column(String(32))                 # chat/system/assign/users 등
+    sender = Column(String(128))
+    text = Column(Text)
+    timestamp = Column(DateTime)                  # KST naive로 저장(표시 용)
+    msg_id = Column(String(64), index=True)       # 클라 중복 전송 대비용(optional)
+
+Index("idx_room_timestamp", Message.room, Message.timestamp)
+
+def init_db():
+    Base.metadata.create_all(bind=engine)
+
+def save_message(room: str, msg: dict):
+    """필요 필드만 저장."""
+    with SessionLocal() as db:
+        db.add(Message(
+            room=room,
+            msg_type=msg.get("type", "chat"),
+            sender=msg.get("sender"),
+            text=msg.get("text"),
+            timestamp=_to_kst_dt(msg.get("timestamp")),
+            msg_id=msg.get("msgId"),
+        ))
+        db.commit()
+
+def load_recent_messages(room: str, limit: int = 50):
+    with SessionLocal() as db:
+        rows = db.query(Message)\
+                 .filter(Message.room == room)\
+                 .order_by(Message.timestamp.desc())\
+                 .limit(limit).all()
+        data = []
+        for r in reversed(rows):
+            data.append({
+                "type": r.msg_type,
+                "sender": r.sender,
+                "text": r.text,
+                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+                "room": room,
+                "msgId": r.msg_id,
+            })
+        return data
+
+def _to_kst_dt(ts_str: str | None):
+    kst = pytz.timezone("Asia/Seoul")
+    if ts_str:
+        try:
+            # ISO 문자열이면 파싱 시도
+            return datetime.fromisoformat(ts_str.replace("Z", "+00:00")).astimezone(kst).replace(tzinfo=None)
+        except:
+            pass
+    return datetime.now(kst).replace(tzinfo=None)
+
+# --- App ---
+app = FastAPI(title="Mini Chat (rooms + history)")
+init_db()
+
+# 메모리 상태
+rooms: Dict[str, Set[WebSocket]] = defaultdict(set)        # room -> set(ws)
+user_by_ws: Dict[WebSocket, str] = {}                      # ws -> name
+room_by_ws: Dict[WebSocket, str] = {}                      # ws -> room
+users_in_room: Dict[str, Set[str]] = defaultdict(set)      # room -> set(name)
+
+def kst_iso_now():
+    kst = pytz.timezone('Asia/Seoul')
+    return datetime.now(kst).isoformat()
+
+async def broadcast_room(room: str, message: dict):
+    # timestamp 자동 추가
     if "timestamp" not in message:
-        # UTC 현재 시간을 한국 시간대로 변환
-        kst = pytz.timezone('Asia/Seoul')
-        message["timestamp"] = datetime.now(kst).isoformat()
-    
+        message["timestamp"] = kst_iso_now()
+    message.setdefault("room", room)
     data = json.dumps(message, ensure_ascii=False)
-    # 끊어진 소켓은 제거
+
     dead = []
-    for ws in active_connections:
+    for ws in list(rooms[room]):
         try:
             await ws.send_text(data)
         except Exception:
             dead.append(ws)
     for ws in dead:
-        active_connections.discard(ws)
+        # 정리
+        await _cleanup_ws(ws)
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
-    # 쿼리로 닉네임 받기 (기본값 '익명')
+    # 쿼리 파싱
     name = ws.query_params.get("name", "익명")
-    # 먼저 accept한 뒤 닉네임 중복 검사
+    room = ws.query_params.get("room", "lobby")
+
     await ws.accept()
 
-    # 닉네임 중복 시 자동으로 유니크한 suffix를 붙여 할당
-    assigned_name = name
-    if assigned_name in connected_users:
+    # 방 단위 닉 중복 처리
+    assigned = name
+    if assigned in users_in_room[room]:
         idx = 1
-        while f"{name}_{idx}" in connected_users:
+        while f"{name}_{idx}" in users_in_room[room]:
             idx += 1
-        assigned_name = f"{name}_{idx}"
-        # 클라이언트에게 할당된 닉네임을 알림
+        assigned = f"{name}_{idx}"
         try:
-            await ws.send_text(json.dumps({"type": "assign", "name": assigned_name}, ensure_ascii=False))
+            await ws.send_text(json.dumps({"type": "assign", "name": assigned, "room": room}, ensure_ascii=False))
         except Exception:
             pass
 
-    # 연결/사용자 목록에 추가
-    active_connections.add(ws)
-    connected_users.add(assigned_name)
+    # 입장 처리
+    rooms[room].add(ws)
+    room_by_ws[ws] = room
+    user_by_ws[ws] = assigned
+    users_in_room[room].add(assigned)
 
-    # 사용자 목록 업데이트 브로드캐스트
-    await broadcast({"type": "users", "users": list(connected_users)})
-    # 입장 알림 (할당된 닉네임 사용)
-    await broadcast({"type": "system", "text": f"🟢 {assigned_name} 님이 입장했습니다.", "sender": "system"})
+    # 1) 최근 히스토리 전송
+    history = load_recent_messages(room, limit=50)
+    try:
+        await ws.send_text(json.dumps({"type": "history", "room": room, "messages": history}, ensure_ascii=False))
+    except Exception:
+        pass
+
+    # 2) 현재 방 사용자 목록 브로드캐스트
+    await broadcast_room(room, {"type": "users", "users": sorted(list(users_in_room[room]))})
+
+    # 3) 입장 시스템 메시지(브로드캐스트 + 저장)
+    join_msg = {"type": "system", "text": f"🟢 {assigned} 님이 '{room}' 방에 입장했습니다.", "sender": "system", "room": room}
+    await broadcast_room(room, join_msg)
+    save_message(room, {**join_msg, "timestamp": kst_iso_now()})
 
     try:
         while True:
             text = await ws.receive_text()
-            await broadcast({"type": "chat", "text": text, "sender": assigned_name})
+
+            # 클라가 순수 텍스트만 보내도 되고, JSON을 보내도 됨.
+            try:
+                payload = json.loads(text)
+                msg_type = payload.get("type", "chat")
+                msg_text = payload.get("text", "")
+                msg_id = payload.get("msgId") or str(uuid4())
+            except json.JSONDecodeError:
+                msg_type = "chat"
+                msg_text = text
+                msg_id = str(uuid4())
+
+            sender = user_by_ws.get(ws, "익명")
+            room = room_by_ws.get(ws, "lobby")
+
+            message = {
+                "type": msg_type,
+                "text": msg_text,
+                "sender": sender,
+                "timestamp": kst_iso_now(),
+                "room": room,
+                "msgId": msg_id,
+            }
+
+            # 같은 방에만 브로드캐스트
+            await broadcast_room(room, message)
+
+            # 히스토리 저장 (chat/system 등 모두 저장)
+            save_message(room, message)
+
     except WebSocketDisconnect:
-        active_connections.discard(ws)
-        connected_users.discard(assigned_name)
-        # 사용자 목록 업데이트 브로드캐스트
-        await broadcast({"type": "users", "users": list(connected_users)})
-        # 퇴장 알림 (할당된 닉네임 사용)
-        await broadcast({"type": "system", "text": f"🔴 {assigned_name} 님이 퇴장했습니다.", "sender": "system"})
+        await _cleanup_ws(ws)
     except Exception:
-        active_connections.discard(ws)
-        connected_users.discard(assigned_name)
-        # 사용자 목록 업데이트 브로드캐스트
-        await broadcast({"type": "users", "users": list(connected_users)})
-        # 오류 알림 (할당된 닉네임 사용)
-        await broadcast({"type": "system", "text": f"⚠️ {assigned_name} 연결 오류로 종료", "sender": "system"})
+        await _cleanup_ws(ws)
+        # 오류 시스템 메시지 (방에 남아있는 사람들에게만)
+        room = room_by_ws.get(ws)
+        name = user_by_ws.get(ws, "익명")
+        if room:
+            err_msg = {"type": "system", "text": f"⚠️ {name} 연결 오류로 종료", "sender": "system", "room": room}
+            await broadcast_room(room, err_msg)
+            save_message(room, {**err_msg, "timestamp": kst_iso_now()})
+
+async def _cleanup_ws(ws: WebSocket):
+    room = room_by_ws.pop(ws, None)
+    name = user_by_ws.pop(ws, None)
+    if room:
+        rooms[room].discard(ws)
+        if name:
+            users_in_room[room].discard(name)
+            # 사용자 목록 업데이트
+            await broadcast_room(room, {"type": "users", "users": sorted(list(users_in_room[room]))})
+            # 퇴장 메시지 저장/전파
+            leave_msg = {"type": "system", "text": f"🔴 {name} 님이 '{room}' 방에서 퇴장했습니다.", "sender": "system", "room": room}
+            await broadcast_room(room, leave_msg)
+            save_message(room, {**leave_msg, "timestamp": kst_iso_now()})
 
 # 정적 파일 제공 (프런트)
 dist_dir = os.path.join("frontend", "dist")
 if os.path.isdir(dist_dir):
     app.mount("/", StaticFiles(directory=dist_dir, html=True), name="static")
 else:
+    # 개발 중이라면 주석 처리하고 /docs로만 테스트 가능
     raise RuntimeError("Frontend dist directory not found. Please run 'npm run build' in the frontend directory.")
