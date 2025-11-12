@@ -1,4 +1,4 @@
-from typing import Set, Dict
+﻿from typing import Set, Dict
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 import json
@@ -26,6 +26,7 @@ class Message(Base):
     text = Column(Text)
     timestamp = Column(DateTime)                  # KST naive로 저장(표시 용)
     msg_id = Column(String(64), index=True)       # 클라 중복 전송 대비용(optional)
+    image_data = Column(Text, nullable=True)      # Base64 인코딩된 이미지 데이터(image 타입용)
 
 Index("idx_room_timestamp", Message.room, Message.timestamp)
 
@@ -42,6 +43,7 @@ def save_message(room: str, msg: dict):
             text=msg.get("text"),
             timestamp=_to_kst_dt(msg.get("timestamp")),
             msg_id=msg.get("msgId"),
+            image_data=msg.get("imageData"),
         ))
         db.commit()
 
@@ -53,14 +55,17 @@ def load_recent_messages(room: str, limit: int = 50):
                  .limit(limit).all()
         data = []
         for r in reversed(rows):
-            data.append({
+            msg_dict = {
                 "type": r.msg_type,
                 "sender": r.sender,
                 "text": r.text,
                 "timestamp": r.timestamp.isoformat() if r.timestamp else None,
                 "room": room,
                 "msgId": r.msg_id,
-            })
+            }
+            if r.image_data:
+                msg_dict["imageData"] = r.image_data
+            data.append(msg_dict)
         return data
 
 def _to_kst_dt(ts_str: str | None):
@@ -154,10 +159,12 @@ async def websocket_endpoint(ws: WebSocket):
                 payload = json.loads(text)
                 msg_type = payload.get("type", "chat")
                 msg_text = payload.get("text", "")
+                image_data = payload.get("imageData")
                 msg_id = payload.get("msgId") or str(uuid4())
             except json.JSONDecodeError:
                 msg_type = "chat"
                 msg_text = text
+                image_data = None
                 msg_id = str(uuid4())
 
             sender = user_by_ws.get(ws, "익명")
@@ -171,11 +178,15 @@ async def websocket_endpoint(ws: WebSocket):
                 "room": room,
                 "msgId": msg_id,
             }
+            
+            # image 타입일 경우 imageData 추가
+            if image_data:
+                message["imageData"] = image_data
 
             # 같은 방에만 브로드캐스트
             await broadcast_room(room, message)
 
-            # 히스토리 저장 (chat/system 등 모두 저장)
+            # 히스토리 저장 (chat/system/image 등 모두 저장)
             save_message(room, message)
 
     except WebSocketDisconnect:

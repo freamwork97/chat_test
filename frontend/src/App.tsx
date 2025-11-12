@@ -2,12 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 type ChatMsg = { type: 'chat'; text: string; sender: string; timestamp: string; room?: string }
 type SystemMsg = { type: 'system'; text: string; sender: 'system'; timestamp: string; room?: string }
+type ImageMsg = { type: 'image'; text?: string; imageData: string; sender: string; timestamp: string; room?: string }
 type UsersMsg = { type: 'users'; users: string[] }
 type ErrorMsg = { type: 'error'; text: string; reason?: string }
-type HistoryMsg = { type: 'history'; room: string; messages: Array<ChatMsg | SystemMsg> }
+type HistoryMsg = { type: 'history'; room: string; messages: Array<ChatMsg | SystemMsg | ImageMsg> }
 type AssignMsg = { type: 'assign'; name: string; room?: string }
 
-type Msg = ChatMsg | SystemMsg
+type Msg = ChatMsg | SystemMsg | ImageMsg
 
 // 타임스탬프를 간단한 형식으로 변환 (HH:MM:SS)
 function formatTime(timestamp: string): string {
@@ -33,6 +34,7 @@ export default function App() {
   const [input, setInput] = useState('')
   const wsRef = useRef<WebSocket | null>(null)
   const logEndRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   // 자동 스크롤
   useEffect(() => {
@@ -78,16 +80,16 @@ export default function App() {
 
         // 1) 사용자 목록
         if ('type' in raw && raw.type === 'users') {
-          setUsers(raw.users)
+          setUsers((raw as UsersMsg).users)
           return
         }
 
         // 2) 에러 (닉네임 중복 등의 서버 에러를 시스템 메시지로 표시)
         if ('type' in raw && raw.type === 'error') {
           setStatus('오류')
-          setMessages((prev) => [
+          setMessages((prev: Msg[]) => [
             ...prev,
-            { type: 'system', text: raw.text, sender: 'system', timestamp: new Date().toISOString() }
+            { type: 'system', text: (raw as ErrorMsg).text, sender: 'system', timestamp: new Date().toISOString() }
           ])
           hardClose()
           return
@@ -97,7 +99,7 @@ export default function App() {
         if ('type' in raw && raw.type === 'assign') {
           const newName = (raw as AssignMsg).name
           setName(newName)
-          setMessages((prev) => [
+          setMessages((prev: Msg[]) => [
             ...prev,
             { type: 'system', text: `닉네임이 '${newName}'(으)로 지정되었습니다.`, sender: 'system', timestamp: new Date().toISOString() }
           ])
@@ -115,10 +117,10 @@ export default function App() {
           return
         }
 
-        // 5) 일반 메시지(system/chat)
+        // 5) 일반 메시지(system/chat/image)
         const msg = raw as Msg
-        if (msg.type === 'system' || msg.type === 'chat') {
-          setMessages((prev) => [...prev, msg])
+        if (msg.type === 'system' || msg.type === 'chat' || msg.type === 'image') {
+          setMessages((prev: Msg[]) => [...prev, msg])
         }
       } catch {
         // ignore non-JSON
@@ -148,6 +150,31 @@ export default function App() {
     const payload = JSON.stringify({ type: 'chat', text })
     ws.send(payload)
     setInput('')
+  }
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const ws = wsRef.current
+      if (!ws || ws.readyState !== WebSocket.OPEN) return
+
+      const base64Data = reader.result as string
+      const payload = JSON.stringify({
+        type: 'image',
+        imageData: base64Data,
+        text: ''
+      })
+      ws.send(payload)
+    }
+    reader.readAsDataURL(file)
+
+    // 파일 입력 초기화
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   return (
@@ -189,6 +216,15 @@ export default function App() {
                 <>
                   <span className="time">{formatTime(m.timestamp)}</span> {m.text}
                 </>
+              ) : m.type === 'image' ? (
+                <>
+                  <span className={m.sender === name ? 'me' : 'them'}>[{m.sender}]</span>
+                  <span className="time">{formatTime(m.timestamp)}</span>
+                  <div style={{ marginTop: 8 }}>
+                    <img src={m.imageData} alt="전송된 이미지" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: 8 }} />
+                  </div>
+                  {m.text && <div style={{ marginTop: 4 }}>{m.text}</div>}
+                </>
               ) : (
                 <>
                   <span className={m.sender === name ? 'me' : 'them'}>[{m.sender}]</span>
@@ -222,6 +258,20 @@ export default function App() {
           autoComplete="off"
         />
         <button type="submit">전송</button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleImageSelect}
+          style={{ display: 'none' }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          title="이미지 전송"
+        >
+          🖼️
+        </button>
       </form>
     </div>
   )
