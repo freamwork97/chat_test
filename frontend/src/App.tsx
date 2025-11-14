@@ -26,8 +26,9 @@ function formatTime(timestamp: string): string {
 }
 
 export default function App() {
-  const [name, setName] = useState('익명')
-  const [room, setRoom] = useState('lobby')
+  const [name, setName] = useState('')
+  const [room, setRoom] = useState('')
+  const [isConnected, setIsConnected] = useState(false)
   const [status, setStatus] = useState<'연결 중' | '연결됨' | '연결 종료' | '오류'>('연결 중')
   const [messages, setMessages] = useState<Msg[]>([])
   const [users, setUsers] = useState<string[]>([])
@@ -41,12 +42,10 @@ export default function App() {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages])
 
-  const wsUrl = useMemo(() => {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    // Vite 프록시를 쓰는 경우에도 host 기준으로 붙습니다.
-    const u = `${proto}://${location.host}/ws?name=${encodeURIComponent(name || '익명')}&room=${encodeURIComponent(room || 'lobby')}`
-    return u
-  }, [name, room])
+  const handleJoinSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    connect()
+  }
 
   const hardClose = () => {
     if (wsRef.current) {
@@ -56,13 +55,29 @@ export default function App() {
   }
 
   const connect = () => {
+    // 입력값 검증
+    if (!name.trim()) {
+      alert('사용자명을 입력하세요.')
+      return
+    }
+    if (!room.trim()) {
+      alert('채팅방을 입력하세요.')
+      return
+    }
+
     // 기존 연결 종료 + 상태 초기화
     hardClose()
     setStatus('연결 중')
     setMessages([])   // 새 방 접속 시 히스토리부터 다시 채움
     setUsers([])
+    setIsConnected(true)
 
-    const ws = new WebSocket(wsUrl)
+    const trimmedName = name.trim()
+    const trimmedRoom = room.trim()
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+    const u = `${proto}://${location.host}/ws?name=${encodeURIComponent(trimmedName)}&room=${encodeURIComponent(trimmedRoom)}`
+    
+    const ws = new WebSocket(u)
     wsRef.current = ws
 
     ws.onopen = () => setStatus('연결됨')
@@ -130,13 +145,12 @@ export default function App() {
 
   const disconnect = () => {
     hardClose()
+    setIsConnected(false)
   }
 
   useEffect(() => {
-    // 마운트 시 자동 연결
-    connect()
-    return () => disconnect()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // 이전 코드: 마운트 시 자동 연결 제거
+    // 이제는 사용자가 입장 버튼을 누를 때까지 연결 대기
   }, [])
 
   const send = (e: React.FormEvent) => {
@@ -179,100 +193,117 @@ export default function App() {
 
   return (
     <div className="wrap">
-      <header>
-        <strong>미니 채팅</strong>
-        <span style={{ opacity: 0.8, marginLeft: 8 }}> {status}</span>
-
-        <div style={{ marginTop: 6, opacity: 0.9, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <label>
-            이름{' '}
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{ width: 160, padding: 6, borderRadius: 8, border: '1px solid #333', background: '#0f0f0f', color: '#eee' }}
-            />
-          </label>
-
-          <label>
-            방{' '}
-            <input
-              value={room}
-              onChange={(e) => setRoom(e.target.value)}
-              placeholder="lobby"
-              style={{ width: 160, padding: 6, borderRadius: 8, border: '1px solid #333', background: '#0f0f0f', color: '#eee' }}
-            />
-          </label>
-
-          <button onClick={connect}>연결/재연결</button>
-          <button onClick={disconnect}>연결 종료</button>
-        </div>
-      </header>
-
-      <div className="container">
-        <div id="log">
-          {messages.map((m, i) => (
-            <div key={i} className={m.type === 'system' ? 'sys' : 'msg'}>
-              {m.type === 'system' ? (
-                <>
-                  <span className="time">{formatTime(m.timestamp)}</span> {m.text}
-                </>
-              ) : m.type === 'image' ? (
-                <>
-                  <span className={m.sender === name ? 'me' : 'them'}>[{m.sender}]</span>
-                  <span className="time">{formatTime(m.timestamp)}</span>
-                  <div style={{ marginTop: 8 }}>
-                    <img src={m.imageData} alt="전송된 이미지" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: 8 }} />
-                  </div>
-                  {m.text && <div style={{ marginTop: 4 }}>{m.text}</div>}
-                </>
-              ) : (
-                <>
-                  <span className={m.sender === name ? 'me' : 'them'}>[{m.sender}]</span>
-                  <span className="time">{formatTime(m.timestamp)}</span> {m.text}
-                </>
-              )}
-            </div>
-          ))}
-          <div ref={logEndRef} />
-        </div>
-
-        <aside className="sidebar">
-          <div className="users-header">
-            <strong>접속자 ({users.length})</strong>
-          </div>
-          <div className="users-list">
-            {users.map((user, i) => (
-              <div key={i} className="user-item">
-                <span className="user-dot">●</span> {user}
+      {!isConnected ? (
+        <div className="login-container">
+          <div className="login-box">
+            <h1>미니 채팅</h1>
+            <form onSubmit={handleJoinSubmit}>
+              <div className="form-group">
+                <label htmlFor="name">사용자명</label>
+                <input
+                  id="name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="사용자명"
+                  autoFocus
+                />
               </div>
-            ))}
+              <div className="form-group">
+                <label htmlFor="room">채팅방</label>
+                <input
+                  id="room"
+                  type="text"
+                  value={room}
+                  onChange={(e) => setRoom(e.target.value)}
+                  placeholder="채팅방"
+                />
+              </div>
+              <button type="submit" className="join-btn">입장</button>
+            </form>
           </div>
-        </aside>
-      </div>
+        </div>
+      ) : (
+        <>
+          <header>
+            <strong>미니 채팅</strong>
+            <span style={{ opacity: 0.8, marginLeft: 8 }}> {status}</span>
 
-      <form onSubmit={send}>
-        <input
-          value={input}
-          placeholder="메시지를 입력하세요..."
-          onChange={(e) => setInput(e.target.value)}
-          autoComplete="off"
-        />
-        <button type="submit">전송</button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleImageSelect}
-          style={{ display: 'none' }}
-        />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          title="이미지 전송"
-        >
-          🖼️
-        </button>
-      </form>
+            <div style={{ marginTop: 6, opacity: 0.9, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ fontSize: 14 }}>
+                <strong>{name}</strong> @ <strong>{room}</strong>
+              </div>
+              <button onClick={disconnect}>연결 종료</button>
+            </div>
+          </header>
+
+          <div className="container">
+            <div id="log">
+              {messages.map((m, i) => (
+                <div key={i} className={m.type === 'system' ? 'sys' : 'msg'}>
+                  {m.type === 'system' ? (
+                    <>
+                      <span className="time">{formatTime(m.timestamp)}</span> {m.text}
+                    </>
+                  ) : m.type === 'image' ? (
+                    <>
+                      <span className={m.sender === name ? 'me' : 'them'}>[{m.sender}]</span>
+                      <span className="time">{formatTime(m.timestamp)}</span>
+                      <div style={{ marginTop: 8 }}>
+                        <img src={m.imageData} alt="전송된 이미지" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: 8 }} />
+                      </div>
+                      {m.text && <div style={{ marginTop: 4 }}>{m.text}</div>}
+                    </>
+                  ) : (
+                    <>
+                      <span className={m.sender === name ? 'me' : 'them'}>[{m.sender}]</span>
+                      <span className="time">{formatTime(m.timestamp)}</span> {m.text}
+                    </>
+                  )}
+                </div>
+              ))}
+              <div ref={logEndRef} />
+            </div>
+
+            <aside className="sidebar">
+              <div className="users-header">
+                <strong>접속자 ({users.length})</strong>
+              </div>
+              <div className="users-list">
+                {users.map((user, i) => (
+                  <div key={i} className="user-item">
+                    <span className="user-dot">●</span> {user}
+                  </div>
+                ))}
+              </div>
+            </aside>
+          </div>
+
+          <form onSubmit={send}>
+            <input
+              value={input}
+              placeholder="메시지를 입력하세요..."
+              onChange={(e) => setInput(e.target.value)}
+              autoComplete="off"
+            />
+            <button type="submit">전송</button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelect}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="이미지 전송"
+            >
+              🖼️
+            </button>
+          </form>
+        </>
+      )}
     </div>
   )
 }

@@ -28,4 +28,106 @@ input[type="file"] { display: none; }
 button { padding:10px 16px; border-radius:10px; border:1px solid #333; background:#222; color:#eee; cursor:pointer; }
 button:hover { background:#2a2a2a; }
 
+/* ë¡œê·¸???”ë©´ ?¤í???*/
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #1b1b1b 0%, #0f0f0f 100%);
+}
+
+.login-box {
+  background: #1a1a1a;
+  padding: 40px;
+  border-radius: 12px;
+  border: 1px solid #333;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.login-box h1 {
+  text-align: center;
+  margin: 0 0 32px 0;
+  font-size: 28px;
+  color: #eee;
+}
+
+
+.login-box form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.login-box form .join-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.form-group {
+  margin-bottom: 0;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #ddd;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #0f0f0f;
+  color: #eee;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #00e676;
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.2);
+}
+
+.join-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+  color: #fefefe;
+  cursor: pointer;
+  box-shadow: 0 12px 25px rgba(59, 130, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: background 0.3s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.join-btn:hover {
+  background: linear-gradient(135deg, #4f8ff9 0%, #7eb8ff 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 16px 30px rgba(80, 149, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.join-btn:active {
+  transform: translateY(0);
+  background: linear-gradient(135deg, #2f6cd8 0%, #4c8eed 100%);
+  box-shadow: inset 0 6px 16px rgba(27, 74, 162, 0.65);
+}
+
+.join-btn:focus-visible {
+  outline: 2px solid #9ec5ff;
+  outline-offset: 3px;
+}
+
 
