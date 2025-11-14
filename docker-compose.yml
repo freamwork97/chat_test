@@ -1,11 +1,7 @@
-version: "3.9"
-
 services:
   app:
     build: .
     container_name: mini-chat
-    ports:
-      - "8000:8000"
     environment:
       MONGO_URL: mongodb://mongo:27017
       MONGO_DB_NAME: chatapp
@@ -16,6 +12,18 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:1.27
+    depends_on:
+      app:
+        condition: service_started
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
 
   mongo:
     image: mongo:7.0
