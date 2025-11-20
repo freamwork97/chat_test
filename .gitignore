@@ -149,3 +149,5 @@ Desktop.ini
 
 # Logs
 *.log
+
+/frontend/node_modules/
