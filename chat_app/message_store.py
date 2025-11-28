@@ -42,6 +42,9 @@ def save_message(room: str, msg: dict):
         "timestamp": as_kst_naive(msg.get("timestamp")),
         "msg_id": msg.get("msgId"),
         "image_data": msg.get("imageData"),
+        "file_name": msg.get("fileName"),
+        "file_url": msg.get("fileUrl"),
+        "file_size": msg.get("fileSize"),
     }
     try:
         message_collection.insert_one(doc)
@@ -74,6 +77,10 @@ def load_recent_messages(room: str, limit: int = 50):
         image_data = r.get("image_data")
         if image_data:
             msg_dict["imageData"] = image_data
+        if r.get("msg_type") == "file":
+            msg_dict["fileName"] = r.get("file_name")
+            msg_dict["fileUrl"] = r.get("file_url")
+            msg_dict["fileSize"] = r.get("file_size") or 0
         if "timestamp" not in msg_dict:
             msg_dict["timestamp"] = kst_iso_now()
         data.append(msg_dict)

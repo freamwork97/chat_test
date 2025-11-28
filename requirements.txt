@@ -4,3 +4,4 @@ sqlalchemy==2.0.36
 pytz
 pymongo==4.10.1
 psycopg[binary]==3.2.2
+python-multipart==0.0.12

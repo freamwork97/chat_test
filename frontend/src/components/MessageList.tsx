@@ -3,6 +3,16 @@ import React, { useEffect, useRef } from 'react'
 import { Msg } from '../types/chat'
 import { formatTime } from '../utils/time'
 
+const formatSize = (size: number) => {
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`
+  }
+  if (size >= 1024) {
+    return `${(size / 1024).toFixed(1)} KB`
+  }
+  return `${size} B`
+}
+
 type MessageListProps = {
   messages: Msg[]
   currentUser: string
@@ -33,6 +43,18 @@ export default function MessageList({ messages, currentUser }: MessageListProps)
                   alt="전송된 이미지"
                   style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: 8 }}
                 />
+              </div>
+              {m.text && <div style={{ marginTop: 4 }}>{m.text}</div>}
+            </>
+          ) : m.type === 'file' ? (
+            <>
+              <span className={m.sender === currentUser ? 'me' : 'them'}>[{m.sender}]</span>
+              <span className="time">{formatTime(m.timestamp)}</span>
+              <div style={{ marginTop: 6 }}>
+                <a href={m.fileUrl} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>
+                  {m.fileName}
+                </a>{' '}
+                <span style={{ color: '#777' }}>({formatSize(m.fileSize)})</span>
               </div>
               {m.text && <div style={{ marginTop: 4 }}>{m.text}</div>}
             </>

@@ -10,3 +10,5 @@ POSTGRES_URL = os.getenv(
 
 FRONTEND_DIST = os.path.join("frontend", "dist")
 
+# Directory where uploaded files are stored and served from.
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join("uploads"))

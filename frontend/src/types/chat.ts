@@ -23,6 +23,17 @@ export type ImageMsg = {
   room?: string
 }
 
+export type FileMsg = {
+  type: 'file'
+  text?: string
+  fileName: string
+  fileUrl: string
+  fileSize: number
+  sender: string
+  timestamp: string
+  room?: string
+}
+
 export type UsersMsg = {
   type: 'users'
   users: string[]
@@ -37,7 +48,7 @@ export type ErrorMsg = {
 export type HistoryMsg = {
   type: 'history'
   room: string
-  messages: Array<ChatMsg | SystemMsg | ImageMsg>
+  messages: Array<ChatMsg | SystemMsg | ImageMsg | FileMsg>
 }
 
 export type AssignMsg = {
@@ -46,6 +57,6 @@ export type AssignMsg = {
   room?: string
 }
 
-export type Msg = ChatMsg | SystemMsg | ImageMsg
+export type Msg = ChatMsg | SystemMsg | ImageMsg | FileMsg
 
 export type ConnectionStatus = '연결 중' | '연결됨' | '연결 종료' | '오류'

@@ -11,8 +11,17 @@ export default function App() {
   const [name, setName] = useState('')
   const [room, setRoom] = useState('')
 
-  const { status, messages, users, isConnected, connect, disconnect, sendChatMessage, sendImageMessage } =
-    useChatConnection({ onNameAssigned: setName })
+  const {
+    status,
+    messages,
+    users,
+    isConnected,
+    connect,
+    disconnect,
+    sendChatMessage,
+    sendImageMessage,
+    uploadFile,
+  } = useChatConnection({ onNameAssigned: setName })
 
   const handleJoin = () => {
     const trimmedName = name.trim()
@@ -30,6 +39,18 @@ export default function App() {
     setName(trimmedName)
     setRoom(trimmedRoom)
     connect({ name: trimmedName, room: trimmedRoom })
+  }
+
+  const handleSendFile = async (file: File, note?: string) => {
+    if (!isConnected || !name || !room) {
+      return
+    }
+    try {
+      await uploadFile({ file, sender: name, room, text: note })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '파일 업로드에 실패했습니다.'
+      alert(msg)
+    }
   }
 
   return (
@@ -55,6 +76,7 @@ export default function App() {
             disabled={!isConnected}
             onSendMessage={sendChatMessage}
             onSendImage={(imageData) => sendImageMessage({ imageData })}
+            onSendFile={handleSendFile}
           />
         </>
       )}
